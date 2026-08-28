@@ -4,7 +4,9 @@
 
 A macOS menu bar app that polls a usage JSON endpoint you configure, and shows remaining quota, daily spend, upload / download tokens, and other fields in the status bar and a dropdown.
 
-It is not tied to a single vendor. Provide a URL and API Key; common fields get default Chinese names, which you can rename.
+It is not tied to a single vendor. Provide a URL and API Key; common fields get default display names, which you can rename.
+
+On first launch the app uses Simplified Chinese if the system language is Chinese, otherwise English. You can change this later in Settings → General.
 
 ## Requirements
 
@@ -24,13 +26,13 @@ Drag **ZApiInfo** into **Applications**, then open it from Launchpad or the Appl
 
 If macOS refuses to open it: System Settings → Privacy & Security → **Open Anyway**. The package is ad-hoc signed.
 
-Quit: click the menu bar item → **退出**.
+Quit: click the menu bar item → **Quit**.
 
-Launch at login: Settings → General → **登录时启动**.
+Launch at login: Settings → General → **Launch at login**.
 
 ## First-time setup
 
-1. Click the menu bar item → **设置…**
+1. Click the menu bar item → **Settings…**
 2. Pick a preset (this rewrites the URL path and suggested fields, **without overwriting the Key**):
    - **New API token usage**: `/api/usage/token`
    - **New API user info**: `/api/user/self` (optional extra header `New-Api-User`)
@@ -40,7 +42,7 @@ Launch at login: Settings → General → **登录时启动**.
 4. Paste the API Key (default `Authorization: Bearer …`, stored in the local Keychain)
 5. **Test connection**, then **Save**. Testing does not write the URL and does not start polling.
 
-Only fields checked for **状态栏** appear in the menu bar; **明细** fields appear in the dropdown. Display names, formats, and scale factors can be changed under **展示字段**.
+Only fields checked for **Status bar** appear in the menu bar; **Menu** fields appear in the dropdown. Display names, formats, and scale factors can be changed under **Fields**.
 
 If the API nests totals and today under one path (e.g. `usage.today.output_tokens` / `usage.total.input_tokens`, or a `"102400/1234"` string), they are split into “today …” and “total …” names.
 
@@ -83,7 +85,7 @@ swift scripts/generate_icon.swift
 | API Key | Local Keychain |
 | URL, field checks, display names, daily snapshots | Sandboxed UserDefaults |
 
-Nothing is uploaded. To wipe local data: Settings → General → **清除本地数据**.
+Nothing is uploaded. To wipe local data: Settings → General → **Clear local data…**.
 
 ## License
 
