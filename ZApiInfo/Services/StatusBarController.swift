@@ -34,6 +34,7 @@ final class StatusBarController: NSObject {
             _ = store.statusBarText
             _ = store.status
             _ = store.language
+            _ = store.activeSourceID
             _ = store.statusBarFields().map(\.path)
             _ = store.values
             render()

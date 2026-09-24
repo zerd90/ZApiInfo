@@ -8,6 +8,8 @@ It is not tied to a single vendor. Provide a URL and API Key; common fields get 
 
 On first launch the app uses Simplified Chinese if the system language is Chinese, otherwise English. You can change this later in Settings → General.
 
+You can add multiple URLs. Each source keeps its own key, fields, and status-bar selection. Switch sources in Settings → Source or in the menu-bar window.
+
 ## Requirements
 
 - macOS 14 or later

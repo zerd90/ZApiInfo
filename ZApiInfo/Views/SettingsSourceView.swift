@@ -9,6 +9,26 @@ struct SettingsSourceView: View {
         @Bindable var store = store
         let copy = store.copy
         Form {
+            Section(copy.sectionSources) {
+                Picker(copy.pickerSource, selection: sourceBinding) {
+                    ForEach(Array(store.sources.enumerated()), id: \.element.id) { index, source in
+                        Text(source.resolvedName(fallbackIndex: index + 1, language: store.language)).tag(source.id)
+                    }
+                }
+                TextField(copy.sourceName, text: nameBinding)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Button(copy.addSource) { store.addSource() }
+                    Button(copy.duplicateSource) { store.duplicateSource() }
+                    Spacer()
+                    Button(copy.deleteSource, role: .destructive) { store.deleteActiveSource() }
+                        .disabled(store.sources.count < 2)
+                }
+                Text(copy.sourceHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section(copy.sectionPreset) {
                 Picker(copy.pickerTemplate, selection: $store.draftPreset) {
                     ForEach(PresetID.allCases) { item in
@@ -108,5 +128,19 @@ struct SettingsSourceView: View {
         }
         .formStyle(.grouped)
         .padding(8)
+    }
+
+    private var sourceBinding: Binding<UUID> {
+        Binding(
+            get: { store.activeSourceID },
+            set: { store.switchSource($0) }
+        )
+    }
+
+    private var nameBinding: Binding<String> {
+        Binding(
+            get: { store.sourceName },
+            set: { store.setSourceName($0) }
+        )
     }
 }

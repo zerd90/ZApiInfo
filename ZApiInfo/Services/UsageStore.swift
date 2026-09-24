@@ -8,8 +8,10 @@ import Observation
 final class UsageStore {
     static let shared = UsageStore()
 
+    var appState: AppState
     var config: AppConfig
     var apiKey: String
+    var sourceName = ""
     var values: [String: JSONLeafValue] = [:]
     var missingPaths: Set<String> = []
     var lastSuccessAt: Date?
@@ -37,32 +39,39 @@ final class UsageStore {
     @ObservationIgnored private var lastPathSatisfied = true
 
     private init() {
-        config = ConfigStore.loadConfig()
-        apiKey = KeychainStore.load()
-        snapshots = ConfigStore.loadSnapshots()
-        if let cache = ConfigStore.loadCache() {
-            lastSuccessAt = cache.lastSuccessAt
-            values = cache.values.compactMapValues(\.value)
-        }
-        config.launchAtLogin = LaunchAtLogin.isEnabled
-        draftURL = config.endpointURL
-        draftKey = apiKey
-        draftExtraName = config.extraHeaderName
-        draftExtraValue = config.extraHeaderValue
-        draftAuth = config.authScheme
-        draftInterval = config.refreshIntervalSec
-        draftTimeout = config.timeoutSec
-        draftPreset = PresetID(rawValue: config.presetId) ?? .custom
-        let language = AppLanguage.resolve(config.languageCode)
+        var state = ConfigStore.loadState()
+        let language = AppLanguage.resolve(state.languageCode)
         AppLanguage.current = language
-        if config.languageCode != language.rawValue {
-            config.languageCode = language.rawValue
-            ConfigStore.saveConfig(config)
+        state.languageCode = language.rawValue
+        state.launchAtLogin = LaunchAtLogin.isEnabled
+        let active = state.active
+        let loadedConfig = active.asConfig(languageCode: state.languageCode, launchAtLogin: state.launchAtLogin)
+        let loadedKey = KeychainStore.load(sourceID: active.id)
+        let loadedSnapshots = ConfigStore.loadSnapshots(sourceID: active.id)
+        let loadedCache = ConfigStore.loadCache(sourceID: active.id)
+        appState = state
+        config = loadedConfig
+        sourceName = active.name
+        apiKey = loadedKey
+        snapshots = loadedSnapshots
+        if let loadedCache {
+            lastSuccessAt = loadedCache.lastSuccessAt
+            values = loadedCache.values.compactMapValues(\.value)
         }
+        fillDraftsFromConfig()
+        ConfigStore.saveState(state)
+    }
+
+    var activeSourceID: UUID { appState.activeSourceID }
+
+    var sources: [SourceProfile] { appState.sources }
+
+    var sourceDisplayTitle: String {
+        appState.active.resolvedName(fallbackIndex: appState.activeIndex + 1, language: language)
     }
 
     var language: AppLanguage {
-        AppLanguage(rawValue: config.languageCode ?? AppLanguage.current.rawValue) ?? AppLanguage.current
+        AppLanguage(rawValue: appState.languageCode ?? AppLanguage.current.rawValue) ?? AppLanguage.current
     }
 
     var copy: L10n { L10n(language: language) }
@@ -117,21 +126,134 @@ final class UsageStore {
     }
 
     func persistConfig() {
-        ConfigStore.saveConfig(config)
-        KeychainStore.save(apiKey)
-        ConfigStore.saveSnapshots(snapshots)
+        flushActiveToState()
+        ConfigStore.saveState(appState)
+        KeychainStore.save(apiKey, sourceID: activeSourceID)
+        ConfigStore.saveSnapshots(snapshots, sourceID: activeSourceID)
         persistValueCache()
     }
 
+    private func flushActiveToState() {
+        let id = activeSourceID
+        let profile = SourceProfile.from(config, id: id, name: sourceName)
+        if let index = appState.sources.firstIndex(where: { $0.id == id }) {
+            appState.sources[index] = profile
+        } else {
+            appState.sources.append(profile)
+        }
+        appState.languageCode = config.languageCode
+        appState.launchAtLogin = config.launchAtLogin
+    }
+
+    private func loadActiveSource() {
+        let active = appState.active
+        appState.activeSourceID = active.id
+        config = active.asConfig(languageCode: appState.languageCode, launchAtLogin: appState.launchAtLogin)
+        sourceName = active.name
+        apiKey = KeychainStore.load(sourceID: active.id)
+        snapshots = ConfigStore.loadSnapshots(sourceID: active.id)
+        if let cache = ConfigStore.loadCache(sourceID: active.id) {
+            lastSuccessAt = cache.lastSuccessAt
+            values = cache.values.compactMapValues(\.value)
+        } else {
+            lastSuccessAt = nil
+            values = [:]
+        }
+        missingPaths = []
+        lastError = nil
+        lastRequest = nil
+        lastRawData = nil
+        fillDraftsFromConfig()
+    }
+
+    private func fillDraftsFromConfig() {
+        draftURL = config.endpointURL
+        draftKey = apiKey
+        draftExtraName = config.extraHeaderName
+        draftExtraValue = config.extraHeaderValue
+        draftAuth = config.authScheme
+        draftInterval = config.refreshIntervalSec
+        draftTimeout = config.timeoutSec
+        draftPreset = PresetID(rawValue: config.presetId) ?? .custom
+    }
+
     func setLanguage(_ language: AppLanguage) {
-        guard config.languageCode != language.rawValue else { return }
+        guard appState.languageCode != language.rawValue else { return }
         AppLanguage.current = language
+        appState.languageCode = language.rawValue
         config.languageCode = language.rawValue
         testMessage = nil
         saveMessage = nil
         refreshDefaultDisplayNames()
         persistConfig()
         SettingsWindowController.shared.syncTitle()
+    }
+
+    func setSourceName(_ name: String) {
+        sourceName = name
+        persistConfig()
+    }
+
+    func switchSource(_ id: UUID) {
+        guard id != activeSourceID, sources.contains(where: { $0.id == id }) else { return }
+        persistConfig()
+        appState.activeSourceID = id
+        loadActiveSource()
+        testMessage = nil
+        saveMessage = nil
+        ConfigStore.saveState(appState)
+        restartPolling()
+    }
+
+    func addSource() {
+        persistConfig()
+        let index = appState.sources.count + 1
+        let profile = SourceProfile.empty(name: copy.untitledSource(index))
+        appState.sources.append(profile)
+        appState.activeSourceID = profile.id
+        loadActiveSource()
+        testMessage = nil
+        saveMessage = nil
+        persistConfig()
+        restartPolling()
+    }
+
+    func duplicateSource() {
+        persistConfig()
+        var copyProfile = appState.active
+        copyProfile.id = UUID()
+        let base = copyProfile.resolvedName(fallbackIndex: appState.activeIndex + 1, language: language)
+        copyProfile.name = copy.duplicatedSource(base)
+        appState.sources.append(copyProfile)
+        KeychainStore.save(apiKey, sourceID: copyProfile.id)
+        ConfigStore.saveSnapshots(snapshots, sourceID: copyProfile.id)
+        if let cache = ConfigStore.loadCache(sourceID: activeSourceID) {
+            ConfigStore.saveCache(cache, sourceID: copyProfile.id)
+        }
+        appState.activeSourceID = copyProfile.id
+        loadActiveSource()
+        testMessage = nil
+        saveMessage = nil
+        persistConfig()
+        restartPolling()
+    }
+
+    func deleteActiveSource() {
+        guard appState.sources.count > 1 else { return }
+        persistConfig()
+        let removedID = activeSourceID
+        let index = appState.activeIndex
+        appState.sources.removeAll { $0.id == removedID }
+        KeychainStore.delete(sourceID: removedID)
+        ConfigStore.deleteSnapshots(sourceID: removedID)
+        ConfigStore.deleteCache(sourceID: removedID)
+        let nextIndex = min(index, appState.sources.count - 1)
+        appState.activeSourceID = appState.sources[nextIndex].id
+        loadActiveSource()
+        testMessage = nil
+        saveMessage = nil
+        persistConfig()
+        restartPolling()
     }
 
     func saveSource(url: String, key: String, extraName: String, extraValue: String, auth: AuthScheme, interval: Int, timeout: Int) {
@@ -146,6 +268,9 @@ final class UsageStore {
         config.authScheme = auth
         config.refreshIntervalSec = interval
         config.timeoutSec = min(30, max(3, timeout))
+        if sourceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            sourceName = URLComponents(string: trimmed)?.host ?? ""
+        }
         apiKey = key
         draftURL = trimmed
         draftKey = key
@@ -245,6 +370,7 @@ final class UsageStore {
         } catch {
             config.launchAtLogin = LaunchAtLogin.isEnabled
         }
+        appState.launchAtLogin = config.launchAtLogin
         persistConfig()
     }
 
@@ -267,17 +393,20 @@ final class UsageStore {
     }
 
     func clearLocalData(includingKey: Bool) {
-        ConfigStore.clearAll(includingKey: includingKey)
-        config = .empty
-        config.languageCode = AppLanguage.current.rawValue
-        if includingKey { apiKey = "" }
-        values = [:]
-        missingPaths = []
-        lastSuccessAt = nil
-        lastError = nil
-        lastRequest = nil
-        snapshots = []
+        let ids = appState.sources.map(\.id)
+        let keptKey = includingKey ? "" : apiKey
+        ConfigStore.clearAll()
+        if includingKey {
+            for id in ids { KeychainStore.delete(sourceID: id) }
+            KeychainStore.deleteLegacy()
+        }
+        appState = .empty
+        appState.languageCode = AppLanguage.current.rawValue
+        appState.launchAtLogin = LaunchAtLogin.isEnabled
+        loadActiveSource()
+        apiKey = keptKey
         testMessage = nil
+        saveMessage = nil
         persistConfig()
         restartPolling()
     }
@@ -586,7 +715,7 @@ final class UsageStore {
                 snapshots.append(DailySnapshot(sourcePath: field.path, date: today, rawValue: raw))
             }
         }
-        ConfigStore.saveSnapshots(snapshots)
+        ConfigStore.saveSnapshots(snapshots, sourceID: activeSourceID)
     }
 
     private func upsertSnapshot(sourcePath: String, raw: Double) {
@@ -597,7 +726,7 @@ final class UsageStore {
         } else {
             snapshots.append(DailySnapshot(sourcePath: sourcePath, date: today, rawValue: raw))
         }
-        ConfigStore.saveSnapshots(snapshots)
+        ConfigStore.saveSnapshots(snapshots, sourceID: activeSourceID)
     }
 
     private func recomputeDerived() {
@@ -655,7 +784,7 @@ final class UsageStore {
             lastURL: config.trimmedURL,
             values: values.mapValues(CachedLeaf.init)
         )
-        ConfigStore.saveCache(cache)
+        ConfigStore.saveCache(cache, sourceID: activeSourceID)
     }
 
     private func registerNotifications() {

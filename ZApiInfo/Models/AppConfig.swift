@@ -207,6 +207,128 @@ struct AppConfig: Codable, Equatable, Sendable {
     }
 }
 
+struct SourceProfile: Codable, Identifiable, Equatable, Hashable, Sendable {
+    var id: UUID
+    var name: String
+    var endpointURL: String
+    var authScheme: AuthScheme
+    var extraHeaderName: String
+    var extraHeaderValue: String
+    var refreshIntervalSec: Int
+    var timeoutSec: Int
+    var presetId: String
+    var statusBarSeparator: String
+    var compactLargeNumbers: Bool
+    var currencySymbol: String
+    var showProtocolFields: Bool
+    var fields: [FieldConfig]
+    var remainNumeratorPath: String
+    var remainDenominatorPath: String
+    var showRemainRatio: Bool
+
+    static func empty(id: UUID = UUID(), name: String = "") -> SourceProfile {
+        SourceProfile(
+            id: id,
+            name: name,
+            endpointURL: "",
+            authScheme: .bearer,
+            extraHeaderName: "",
+            extraHeaderValue: "",
+            refreshIntervalSec: 60,
+            timeoutSec: 10,
+            presetId: PresetID.custom.rawValue,
+            statusBarSeparator: " · ",
+            compactLargeNumbers: true,
+            currencySymbol: "$",
+            showProtocolFields: false,
+            fields: [],
+            remainNumeratorPath: "",
+            remainDenominatorPath: "",
+            showRemainRatio: false
+        )
+    }
+
+    static func from(_ config: AppConfig, id: UUID = UUID(), name: String) -> SourceProfile {
+        SourceProfile(
+            id: id,
+            name: name,
+            endpointURL: config.endpointURL,
+            authScheme: config.authScheme,
+            extraHeaderName: config.extraHeaderName,
+            extraHeaderValue: config.extraHeaderValue,
+            refreshIntervalSec: config.refreshIntervalSec,
+            timeoutSec: config.timeoutSec,
+            presetId: config.presetId,
+            statusBarSeparator: config.statusBarSeparator,
+            compactLargeNumbers: config.compactLargeNumbers,
+            currencySymbol: config.currencySymbol,
+            showProtocolFields: config.showProtocolFields,
+            fields: config.fields,
+            remainNumeratorPath: config.remainNumeratorPath,
+            remainDenominatorPath: config.remainDenominatorPath,
+            showRemainRatio: config.showRemainRatio
+        )
+    }
+
+    func asConfig(languageCode: String?, launchAtLogin: Bool) -> AppConfig {
+        AppConfig(
+            endpointURL: endpointURL,
+            authScheme: authScheme,
+            extraHeaderName: extraHeaderName,
+            extraHeaderValue: extraHeaderValue,
+            refreshIntervalSec: refreshIntervalSec,
+            timeoutSec: timeoutSec,
+            presetId: presetId,
+            statusBarSeparator: statusBarSeparator,
+            compactLargeNumbers: compactLargeNumbers,
+            currencySymbol: currencySymbol,
+            launchAtLogin: launchAtLogin,
+            showProtocolFields: showProtocolFields,
+            fields: fields,
+            remainNumeratorPath: remainNumeratorPath,
+            remainDenominatorPath: remainDenominatorPath,
+            showRemainRatio: showRemainRatio,
+            languageCode: languageCode
+        )
+    }
+
+    var trimmedURL: String {
+        endpointURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func resolvedName(fallbackIndex: Int, language: AppLanguage) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if let host = URLComponents(string: trimmedURL)?.host, !host.isEmpty { return host }
+        return L10n(language: language).untitledSource(fallbackIndex)
+    }
+}
+
+struct AppState: Codable, Equatable, Sendable {
+    var languageCode: String?
+    var launchAtLogin: Bool
+    var activeSourceID: UUID
+    var sources: [SourceProfile]
+
+    static var empty: AppState {
+        let source = SourceProfile.empty()
+        return AppState(
+            languageCode: nil,
+            launchAtLogin: false,
+            activeSourceID: source.id,
+            sources: [source]
+        )
+    }
+
+    var activeIndex: Int {
+        sources.firstIndex(where: { $0.id == activeSourceID }) ?? 0
+    }
+
+    var active: SourceProfile {
+        sources.indices.contains(activeIndex) ? sources[activeIndex] : sources[0]
+    }
+}
+
 enum PresetID: String, CaseIterable, Identifiable, Sendable {
     case custom
     case newapiToken = "newapi_token"

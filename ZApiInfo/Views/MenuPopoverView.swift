@@ -26,14 +26,33 @@ struct MenuPopoverView: View {
 
     private var header: some View {
         HStack {
-            Text("ZApiInfo")
-                .font(.headline)
+            if store.sources.count > 1 {
+                Picker(copy.pickerSource, selection: sourceBinding) {
+                    ForEach(Array(store.sources.enumerated()), id: \.element.id) { index, source in
+                        Text(source.resolvedName(fallbackIndex: index + 1, language: store.language)).tag(source.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 240, alignment: .leading)
+            } else {
+                Text(store.sourceDisplayTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
             Spacer()
             if store.isRefreshing {
                 ProgressView()
                     .controlSize(.small)
             }
         }
+    }
+
+    private var sourceBinding: Binding<UUID> {
+        Binding(
+            get: { store.activeSourceID },
+            set: { store.switchSource($0) }
+        )
     }
 
     private func errorBanner(_ error: AppError) -> some View {

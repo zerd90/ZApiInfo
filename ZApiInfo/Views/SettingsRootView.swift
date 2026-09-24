@@ -13,6 +13,6 @@ struct SettingsRootView: View {
             SettingsGeneralView()
                 .tabItem { Label(copy.tabGeneral, systemImage: "gearshape") }
         }
-        .frame(width: 640, height: 560)
+        .frame(width: 640, height: 620)
     }
 }

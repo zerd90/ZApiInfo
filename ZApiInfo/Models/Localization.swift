@@ -84,6 +84,27 @@ struct L10n {
     var tabFields: String { t("Fields", "展示字段") }
     var tabGeneral: String { t("General", "通用") }
 
+    var sectionSources: String { t("Sources", "数据源") }
+    var pickerSource: String { t("Current source", "当前数据源") }
+    var sourceName: String { t("Name", "名称") }
+    var addSource: String { t("Add", "添加") }
+    var duplicateSource: String { t("Duplicate", "复制") }
+    var deleteSource: String { t("Delete", "删除") }
+    var sourceHint: String {
+        t(
+            "Each source keeps its own URL, API key, fields, and status-bar selection. Switch sources here or in the menu-bar window.",
+            "每个数据源单独保存 URL、API Key、字段和状态栏勾选。可在这里或菜单栏窗口里切换。"
+        )
+    }
+
+    func untitledSource(_ index: Int) -> String {
+        t("Source \(index)", "数据源 \(index)")
+    }
+
+    func duplicatedSource(_ name: String) -> String {
+        t("\(name) copy", "\(name) 副本")
+    }
+
     var sectionPreset: String { t("Preset", "预设") }
     var pickerTemplate: String { t("Template", "模板") }
     var presetHint: String {
